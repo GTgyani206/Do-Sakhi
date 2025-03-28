@@ -1,6 +1,8 @@
 "use client";
 
 import { JSX, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import bgds from "../public/assets/bgds.jpg";
 
 // Define enum for mouth states
 enum MOUTH_STATES {
@@ -46,12 +48,12 @@ export default function LipSyncCharacter(): JSX.Element {
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = 256;
 
-      const source = audioContext.createMediaElementSource(audio);
+      const source = audioContext.createMediaElementSource(audioRef.current!);
       source.connect(analyser);
       analyser.connect(audioContext.destination);
 
       audioContextRef.current = audioContext;
-      analyserRef.current = analyser;
+      analyserRef.current = analyser; // ✅ Save the analyser!
     };
 
     // Handle audio loaded event
@@ -71,16 +73,17 @@ export default function LipSyncCharacter(): JSX.Element {
     // Handle play/pause toggle
     const handlePlaybackToggle = (e: Event): void => {
       const event = e as unknown as AudioPlaybackToggleEvent;
+      console.log("Playback toggle event received:", event.detail.playing);
       if (audioRef.current) {
         if (event.detail.playing) {
-          // Resume audio context if it was suspended
           if (audioContextRef.current?.state === "suspended") {
             audioContextRef.current.resume();
           }
-
+          console.log("Playing Audio");
           audioRef.current.play();
           startLipSyncAnimation();
         } else {
+          console.log("Pausing Audio");
           audioRef.current.pause();
           stopLipSyncAnimation();
         }
@@ -118,12 +121,17 @@ export default function LipSyncCharacter(): JSX.Element {
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
     const animate = (): void => {
-      analyser.getByteFrequencyData(dataArray);
+      if (!analyserRef.current) return;
 
-      // Calculate average volume from a specific frequency range (human voice)
-      // Typically human voice is between 300Hz-3000Hz
-      const voiceStart = Math.floor(300 / (44100 / analyser.fftSize));
-      const voiceEnd = Math.floor(3000 / (44100 / analyser.fftSize));
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      analyserRef.current.getByteFrequencyData(dataArray);
+      analyserRef.current!.getByteFrequencyData(dataArray);
+
+      const sampleRate = audioContextRef.current!.sampleRate;
+      const binSize = sampleRate / analyserRef.current!.fftSize;
+
+      const voiceStart = Math.floor(300 / binSize);
+      const voiceEnd = Math.floor(3000 / binSize);
 
       let sum = 0;
       for (let i = voiceStart; i < voiceEnd; i++) {
@@ -132,7 +140,6 @@ export default function LipSyncCharacter(): JSX.Element {
 
       const average = sum / (voiceEnd - voiceStart);
 
-      // Map the average volume to mouth states
       if (average < 20) {
         setMouthState(MOUTH_STATES.closed);
       } else if (average < 60) {
@@ -158,13 +165,16 @@ export default function LipSyncCharacter(): JSX.Element {
   };
 
   return (
-    <div className="flex justify-center items-center h-64 bg-transparent rounded-lg">
-      <div className=" w-64 h-full ">
+    <div
+      className="flex justify-center items-center h-screen w-full bg-cover bg-center"
+      style={{ backgroundImage: `url(${bgds.src})` }}
+    >
+      <div className="w-64 h-50 relative">
         {/* Base character image */}
         <img
           src={"/assets/char-without-mouth.png"}
           alt="Character"
-          className=" top-0 left-0 w-full h-50%"
+          className=" top-0 left-0 w-full h-50"
         />
 
         {/* Mouth overlay */}
@@ -181,8 +191,8 @@ export default function LipSyncCharacter(): JSX.Element {
           alt="Mouth"
           className="absolute"
           style={{
-            top: "25%",
-            left: "41%",
+            top: "24%",
+            left: "40%",
             transform: "translate(-50%, -50%)",
             width: "20%",
             height: "auto",
